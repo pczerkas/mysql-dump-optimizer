@@ -1,6 +1,66 @@
 import os
 import sys
-import sqlparse
+
+
+def parse_statement(statement):
+    """
+    :type statement: str
+    :return str generator
+    """
+
+    result = []
+    depth = 0
+    text = ""
+    in_string = False
+
+    for char in statement:
+        if char == "\n":
+            continue
+
+        if char == "(" and not in_string:
+            depth += 1
+            if depth == 1:
+                if text:
+                    yield text.strip()
+                    text = ""
+                yield "("
+                continue
+
+        if char == ")" and not in_string:
+            depth -= 1
+            if depth < 0:
+                raise RuntimeError("Watch your parenthesis!")
+
+            if depth == 0 and text:
+                yield text.strip()
+                text = ""
+                yield ")"
+                continue
+
+        if char == " " and depth == 0 and not in_string:
+            if text:
+                yield text
+                text = ""
+            continue
+
+        if char == "'":
+            in_string = not in_string
+            continue
+
+        if char == "," and not in_string and depth == 1 and text:
+            yield text.strip()
+            text = ""
+            yield ","
+
+            continue
+
+        text += char
+
+    if depth != 0:
+        raise RuntimeError("Watch your parenthesis!")
+
+    if text:
+        yield text
 
 
 def optimize_statements(statements):
@@ -34,48 +94,28 @@ def optimize_statements(statements):
             continue
 
         if statement.startswith("CREATE TABLE"):
-            tokens = []
-            for parsed in sqlparse.parse(statement):
-                flatten = parsed.flatten()
-                tokens.extend(map(str, flatten))
+            tokens = list(parse_statement(statement))
 
-            tokens = list(filter(lambda p: p not in ["  ", " ", "", "\n"], tokens))
             table_name = tokens[2]
+            table_indexes = []
 
-            col_def_begin = tokens.index("(")
-            col_def_end = - tokens[::-1].index(")") - 1
+            if "(" in tokens:
+                start = tokens.index("(")
+                end = tokens.index(")")
+                before_columns = " ".join(tokens[: start + 1])
+                columns = []
+                after_columns = " ".join(tokens[end:])
 
-            columns = []
-            indexes = []
+                for col_token in tokens[start + 1: end]:
+                    if col_token == ",":
+                        continue
 
-            col_def_tokens = tokens[col_def_begin + 1: col_def_end]
-            while True:
-                parts = None
-                has_more = True
-                if "," in col_def_tokens:
-                    comma_pos = col_def_tokens.index(",")
-                    parts = col_def_tokens[: comma_pos]
-                    col_def_tokens = col_def_tokens[comma_pos + 1:]
-                else:
-                    parts = col_def_tokens
-                    has_more = False
+                    if col_token.startswith("UNIQUE KEY") or col_token.startswith("KEY"):
+                        table_indexes.append(col_token)
+                    else:
+                        columns.append(col_token)
 
-                parts_str = " ".join(parts)
-
-                if parts_str.startswith("UNIQUE KEY ") or parts_str.startswith("KEY "):
-                    indexes.append(parts_str)
-                else:
-                    columns.append(parts_str)
-
-                if not has_more:
-                    break
-
-            before_columns = " ".join(tokens[:col_def_begin])
-            after_columns = " ".join(tokens[col_def_end + 1:])
-            columns = "  " + ",\n  ".join(columns)
-
-            statement = "\n".join([before_columns, "(", columns, ")", after_columns, ""])
-            table_indexes = indexes
+                statement = before_columns + "\n" + ",\n  ".join(columns) + "\n" + after_columns + "\n"
         yield statement
 
 

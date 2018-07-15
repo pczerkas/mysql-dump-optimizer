@@ -39,6 +39,5 @@ ADD KEY `IDX_OTHER_COLUMN` (`OTHER_COLUMN`);
 
 # Usage
 ```
-pip install sqlparse
 python optimizer.py input.sql output.sql
 ```
