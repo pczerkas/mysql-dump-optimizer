@@ -12,6 +12,7 @@ def parse_statement(statement):
     depth = 0
     text = ""
     in_string = False
+    quotes = None
 
     for char in statement:
         if char == "\n":
@@ -43,16 +44,19 @@ def parse_statement(statement):
                 text = ""
             continue
 
-        if char == "'":
-            in_string = not in_string
-            continue
-
         if char == "," and not in_string and depth == 1 and text:
             yield text.strip()
             text = ""
             yield ","
-
             continue
+
+        if char == "'" or char == "`":
+            if not in_string:
+                quotes = char
+                in_string = True
+            elif quotes == char:
+                in_string = False
+                quotes = None
 
         text += char
 
